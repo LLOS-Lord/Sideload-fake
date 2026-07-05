@@ -80,16 +80,50 @@ jobs:
           # hoặc cài từ tap khác (tìm "ldid brew tap" nếu 2 lệnh trên đều fail).
           brew install ldid || brew install --formula ldid
 
+      # THÊM: cache thư mục checkout SPM riêng cho app shell (job build-package
+      # đã cache .build của `swift build`, nhưng job này dùng xcodebuild trên
+      # project XcodeGen sinh ra, mặc định checkout vào DerivedData — ép nó
+      # dùng 1 đường dẫn cố định để cache được, đỡ phải tải lại 4 dependency
+      # (BigInt/swift-certificates/swift-crypto/MinimuxerPackage, ~150MB) từ
+      # mạng ở MỌI lần chạy. Cũng giảm bớt khả năng dính lỗi mạng ngẫu nhiên
+      # của bước resolve — xem actions/runner-images#13175 (lỗi đã biết, còn
+      # mở: xcodebuild -resolvePackageDependencies trên macOS runner của
+      # GitHub thỉnh thoảng lỗi/treo do hạ tầng, không liên quan gói cụ thể).
+      - name: Cache SPM checkouts (app shell)
+        uses: actions/cache@v4
+        with:
+          path: ~/spm-cache
+          key: ${{ runner.os }}-appshell-spm-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-appshell-spm-
+
       - name: xcodegen generate (sinh .xcodeproj từ App/project.yml)
         working-directory: App
         run: xcodegen generate
 
+      # THÊM retry (3 lần, cách nhau 20s): resolvePackageDependencies qua
+      # xcodebuild trên runner macOS của GitHub đôi khi lỗi/treo do hạ tầng
+      # mạng của GitHub, KHÔNG phải do Package.swift sai — đây là lỗi đã biết,
+      # còn mở, xem actions/runner-images#13175. Nếu vẫn lỗi sau 3 lần, in rõ
+      # để không nhầm với lỗi cấu hình dependency.
       - name: Resolve Swift Package dependencies
         working-directory: App
         run: |
-          xcodebuild -resolvePackageDependencies \
-            -project OpenSideloader.xcodeproj \
-            -scheme OpenSideloader
+          for attempt in 1 2 3; do
+            echo "::group::Resolve lần $attempt/3"
+            if xcodebuild -resolvePackageDependencies \
+              -project OpenSideloader.xcodeproj \
+              -scheme OpenSideloader \
+              -clonedSourcePackagesDirPath ~/spm-cache; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Resolve lần $attempt/3 thất bại — thử lại sau 20s (nghi ngờ lỗi mạng thoáng qua của runner, xem actions/runner-images#13175)."
+            sleep 20
+          done
+          echo "::error::Resolve Swift Package dependencies thất bại sau 3 lần thử liên tiếp — nếu vẫn lỗi, khả năng cao KHÔNG còn là vấn đề mạng thoáng qua, cần xem log đầy đủ của lần thử cuối ở trên."
+          exit 1
 
       # Archive KHÔNG ký (không có chứng chỉ Apple thật trong CI) — tạo ra
       # .app hợp lệ về cấu trúc nhưng chưa có chữ ký thật, giống cách
@@ -104,6 +138,7 @@ jobs:
             -configuration Release \
             -archivePath ../build/OpenSideloader.xcarchive \
             -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath ~/spm-cache \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
