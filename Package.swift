@@ -31,6 +31,14 @@ let package = Package(
         // Apple — cả 2 đều của Apple/SSWG, Apache 2.0, KHÔNG phải AGPL.
         .package(url: "https://github.com/apple/swift-certificates.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        // minimuxer (Rust, AGPL) — dùng thẳng package SPM chính thức của SideStore
+        // thay vì tự khai báo binaryTarget trỏ URL/checksum thủ công. Repo này đã
+        // đóng gói sẵn RustXcframework.xcframework NGAY TRONG git (không tải qua
+        // mạng lúc resolve), nên `xcodebuild -resolvePackageDependencies` không
+        // còn phụ thuộc vào 1 URL Release do mình tự host + tính checksum tay
+        // (đây chính là nguyên nhân job "Resolve Swift Package dependencies" lỗi
+        // exit code 74 trước đây: URL cũ chứa "VERSION" theo nghĩa đen, 404).
+        .package(url: "https://github.com/SideStore/MinimuxerPackage.git", branch: "main"),
     ],
     targets: [
         .target(
@@ -40,26 +48,13 @@ let package = Package(
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "_CryptoExtras", package: "swift-crypto"),
                 "CCommonCryptoShim",
-                "MinimuxerFFI",
+                .product(name: "Minimuxer", package: "MinimuxerPackage"),
             ]
         ),
 
         // Shim hệ thống để gọi CommonCrypto (AES-CBC) từ Swift qua SPM.
         // CommonCrypto có sẵn trên mọi thiết bị Apple, không cần tải thêm gì.
         .systemLibrary(name: "CCommonCryptoShim", pkgConfig: nil),
-
-        // minimuxer là Rust — không có bản SPM thuần Swift. Cách dùng KHÔNG cần
-        // fork/tự build: tải file .xcframework đã build sẵn từ trang Releases
-        // của https://github.com/SideStore/minimuxer (hoặc build từ mã nguồn gốc
-        // bằng `cargo build --target aarch64-apple-ios` rồi đóng gói xcframework,
-        // xem README mục 3) và khai báo binaryTarget trỏ tới file/URL đó.
-        // Điền lại url + checksum thật trước khi build — 2 giá trị placeholder
-        // dưới đây CHƯA dùng được.
-        .binaryTarget(
-            name: "MinimuxerFFI",
-            url: "https://github.com/SideStore/minimuxer/releases/download/VERSION/minimuxer.xcframework.zip",
-            checksum: "REPLACE_WITH_REAL_CHECKSUM_FROM_RELEASE_PAGE"
-        ),
 
         .testTarget(
             name: "OpenSideloaderAppTests",
