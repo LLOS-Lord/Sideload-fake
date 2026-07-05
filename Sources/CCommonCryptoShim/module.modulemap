@@ -1,0 +1,5 @@
+module CCommonCryptoShim [system] {
+    header "shim.h"
+    link "System"
+    export *
+}
