@@ -38,7 +38,10 @@ let package = Package(
         // còn phụ thuộc vào 1 URL Release do mình tự host + tính checksum tay
         // (đây chính là nguyên nhân job "Resolve Swift Package dependencies" lỗi
         // exit code 74 trước đây: URL cũ chứa "VERSION" theo nghĩa đen, 404).
-        .package(url: "https://github.com/SideStore/MinimuxerPackage.git", branch: "main"),
+        // Ghim đúng 1 commit (thay vì `branch: "main"`) — KHÔNG phải để né lỗi gì
+        // trong repo đó, mà để bớt 1 biến số khi debug: nếu resolve vẫn lỗi, chắc
+        // chắn không phải do nhánh main đổi commit giữa các lần chạy CI.
+        .package(url: "https://github.com/SideStore/MinimuxerPackage.git", revision: "7a73cc752eb4e1efcbda260d0854f3f3a3c8436d"),
     ],
     targets: [
         .target(
