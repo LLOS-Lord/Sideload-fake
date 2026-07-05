@@ -46,12 +46,15 @@ struct SettingsView: View {
     }
 }
 
-/// Gộp toàn bộ quy trình sửa lỗi AFC/pairing đã biết là hiệu quả thành MỘT màn hình,
-/// thay vì rải rác nhiều bước thủ công như tài liệu troubleshooting gốc.
+/// Gộp quy trình sửa lỗi AFC/pairing thành 1 màn hình — nhưng KHÔNG giả vờ tự
+/// sinh được pairing file mới (minimuxer không có khả năng đó, xem
+/// CoreProtocols.swift). Bước 2 bắt buộc người dùng tự chọn 1 file đã tạo từ
+/// bên ngoài (Termux/PC qua make_pair_file.py, hoặc rút từ iTunes/Finder).
 private struct PairingTroubleshootView: View {
     @EnvironmentObject private var environment: AppEnvironment
-    @State private var isRepairing = false
-    @State private var didFinish = false
+    @State private var isWorking = false
+    @State private var isPickingFile = false
+    @State private var hasPairingFile = false
 
     var body: some View {
         List {
@@ -61,44 +64,64 @@ private struct PairingTroubleshootView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Quy trình sửa tự động") {
-                Label("Xoá hồ sơ ghép nối cũ", systemImage: "1.circle")
-                Label("Tạo hồ sơ ghép nối mới trực tiếp trên thiết bị này", systemImage: "2.circle")
-                Label("Kiểm tra lại Wi-Fi + VPN cục bộ", systemImage: "3.circle")
+            Section("Trạng thái hiện tại") {
+                Label(
+                    hasPairingFile ? "Đã có pairing file hợp lệ" : "Chưa có pairing file",
+                    systemImage: hasPairingFile ? "checkmark.circle.fill" : "xmark.circle"
+                )
+                .foregroundStyle(hasPairingFile ? .green : .secondary)
             }
 
-            Section {
+            Section("Bước 1 — Xoá pairing cũ (nếu có)") {
                 Button {
-                    Task { await repair() }
+                    Task { await resetOnly() }
                 } label: {
-                    if isRepairing {
-                        HStack { ProgressView(); Text("Đang sửa...") }
+                    if isWorking {
+                        HStack { ProgressView(); Text("Đang xoá...") }
                     } else {
-                        Text("Sửa ngay")
+                        Text("Xoá pairing cũ")
                     }
                 }
-                .disabled(isRepairing)
+                .disabled(isWorking)
+            }
 
-                if didFinish {
-                    Label("Đã hoàn tất — thử cài hoặc làm mới app lại xem sao.", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+            Section("Bước 2 — Nhập pairing file mới") {
+                Text("minimuxer KHÔNG tự tạo được pairing file mới trên chính máy — cần tạo từ bên ngoài rồi nhập vào đây:\n\n• Chạy make_pair_file.py trên Termux/PC (máy phải đặt mã khoá màn hình và đang mở khoá lúc chạy)\n• AirDrop hoặc copy file .mobiledevicepairing vào Files app trên chính điện thoại này\n• Bấm nút dưới, chọn đúng file đó")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button("Chọn file pairing...") {
+                    isPickingFile = true
                 }
+                .disabled(isWorking)
             }
 
             Section("Nếu vẫn không được") {
-                Text("• Đảm bảo Wi-Fi đang bật, không dùng data di động\n• Đổi máy chủ anisette trong Cài đặt nâng cao\n• Khởi động lại thiết bị")
+                Text("• Đảm bảo Wi-Fi đang bật, không dùng data di động\n• Kiểm tra StosVPN đang connected\n• Máy phải đặt mã khoá màn hình và mở khoá lúc tạo pairing file\n• Thiết bị iOS ≤ 17.3 mới dùng được cách này (17.4+ đổi sang RemotePairing)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Sửa lỗi kết nối")
+        .fileImporter(isPresented: $isPickingFile, allowedContentTypes: [.data]) { result in
+            Task { await handlePicked(result) }
+        }
+        .task { hasPairingFile = await environment.pairingFileManaging.hasValidPairingFile() }
     }
 
-    private func repair() async {
-        isRepairing = true
-        defer { isRepairing = false }
-        await environment.repairPairingAndVPN()
-        didFinish = environment.lastError == nil
+    private func resetOnly() async {
+        isWorking = true
+        defer { isWorking = false }
+        await environment.resetPairingFile()
+        hasPairingFile = await environment.pairingFileManaging.hasValidPairingFile()
+    }
+
+    private func handlePicked(_ result: Result<URL, Error>) async {
+        guard case .success(let url) = result else { return }
+        isWorking = true
+        defer { isWorking = false }
+        await environment.importPairingFile(from: url)
+        hasPairingFile = await environment.pairingFileManaging.hasValidPairingFile()
     }
 }
 

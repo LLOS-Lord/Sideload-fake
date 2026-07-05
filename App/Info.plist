@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>OpenSideloader</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<!-- SwiftUI App-lifecycle (@main struct: App) tự quản lý scene, KHÔNG cần
+	     UIApplicationSceneManifest kiểu UIKit/AppDelegate cũ — thêm vào có thể
+	     gây xung đột lifecycle, nên cố tình để trống mục đó. -->
+	<key>UILaunchScreen</key>
+	<dict/>
+
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<!-- Cho phép kiểm tra StosVPN đã cài chưa qua canOpenURL — xem AnisetteClient/
+	     MinimuxerDeviceAdapter (NEVPNStatusReader). -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>stosvpn</string>
+	</array>
+
+	<!-- Scheme riêng để 1 app khác (hoặc Safari) gọi lại OpenSideloader sau khi
+	     hoàn tất 1 bước xác thực/refresh — đổi tuỳ ý, chỉ cần khớp chỗ dùng. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>opensideloader</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<!-- Bật tạm mục dưới nếu anisette server bạn tự host chưa có HTTPS hợp lệ
+		     khi test local (127.0.0.1) — xoá trước khi phát hành thật.
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>127.0.0.1</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+		-->
+	</dict>
+</dict>
+</plist>

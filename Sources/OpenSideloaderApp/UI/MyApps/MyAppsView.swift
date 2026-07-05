@@ -38,9 +38,9 @@ struct MyAppsView: View {
             .alert(item: $environment.lastError) { error in
                 Alert(
                     title: Text(error.title),
-                    message: Text(error.message),
-                    primaryButton: .default(Text("Sửa ngay")) {
-                        Task { await environment.repairPairingAndVPN() }
+                    message: Text(error.message + "\n\nSau khi xoá, vào tab Cài đặt hệ thống → Sửa lỗi kết nối để nhập file pairing mới."),
+                    primaryButton: .default(Text("Xoá pairing cũ")) {
+                        Task { await environment.resetPairingFile() }
                     },
                     secondaryButton: .cancel(Text("Để sau"))
                 )

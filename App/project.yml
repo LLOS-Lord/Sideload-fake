@@ -1,0 +1,77 @@
+name: OpenSideloader
+
+# Sinh .xcodeproj bằng XcodeGen (https://github.com/yonaskolb/XcodeGen, MIT) —
+# KHÔNG hand-write project.pbxproj vì định dạng đó rất dễ hỏng và không có cách
+# nào kiểm tra hợp lệ nếu không có Xcode thật. Cách dùng:
+#
+#   brew install xcodegen
+#   cd App
+#   xcodegen generate
+#   open OpenSideloader.xcodeproj
+#
+# Sau lần đầu generate, mọi thay đổi cấu trúc project (thêm target, đổi bundle
+# id...) nên sửa Ở FILE NÀY rồi chạy lại `xcodegen generate`, không sửa tay
+# project.pbxproj sinh ra (sẽ bị ghi đè lần sau).
+#
+# ⚠️ MỨC ĐỘ TIN CẬY: đây là spec YAML tôi viết dựa trên schema công khai của
+# XcodeGen, nhưng tôi không có Xcode để chạy thử `xcodegen generate` thật.
+# Nếu XcodeGen báo lỗi parse key nào đó, đối chiếu với README của XcodeGen —
+# rủi ro ở đây thấp hơn NHIỀU so với việc tôi tự viết pbxproj bằng tay, vì
+# XcodeGen tự validate schema trước khi sinh file.
+
+options:
+  bundleIdPrefix: com.example.opensideloader
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+# Local Swift package đã viết ở thư mục gốc (../) — toàn bộ logic (Core/ + UI/)
+# nằm trong đó, App/ ở đây chỉ là vỏ mỏng (Info.plist, entitlements, icon).
+packages:
+  OpenSideloaderApp:
+    path: ..
+
+targets:
+  OpenSideloader:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Sources
+    resources:
+      - path: Assets.xcassets
+    dependencies:
+      - package: OpenSideloaderApp
+        product: OpenSideloaderApp
+        embed: false   # local package library — link tĩnh, không cần embed framework
+    info:
+      path: Info.plist
+    entitlements:
+      path: OpenSideloader.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.opensideloader
+        PRODUCT_NAME: OpenSideloader
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"          # 1 = iPhone; đổi thành "1,2" nếu muốn hỗ trợ iPad
+        SUPPORTS_MACCATALYST: false
+        CODE_SIGN_STYLE: Automatic
+        # Để trống DEVELOPMENT_TEAM ở đây — điền Team ID thật trong Xcode
+        # (Signing & Capabilities) hoặc qua biến CI, KHÔNG hardcode vào repo.
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Release:
+          SWIFT_COMPILATION_MODE: wholemodule
+
+schemes:
+  OpenSideloader:
+    build:
+      targets:
+        OpenSideloader: all
+    run:
+      config: Debug
+    archive:
+      config: Release

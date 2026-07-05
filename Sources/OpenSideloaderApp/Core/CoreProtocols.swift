@@ -43,10 +43,21 @@ protocol AppInstalling {
 
 /// Bọc thao tác quản lý pairing file (nguồn gốc phổ biến nhất của lỗi AFC).
 ///
-/// Triển khai thật: MinimuxerDeviceAdapter, tương đương idevice_pair (jkcoxson/idevice_pair).
+/// ⚠️ Đã xác nhận qua mã nguồn thật của minimuxer: KHÔNG có hàm FFI nào tự
+/// "sinh" pairing file mới trên chính thiết bị — minimuxer chỉ TIÊU THỤ 1
+/// pairing file có sẵn qua `start(pairing_file:log_path:)`. Vì vậy
+/// `PairingFileManaging` ở đây là NHẬP (import) một file đã được tạo từ bên
+/// ngoài (ví dụ bằng `make_pair_file.py` chạy trên Termux/PC qua USB thật —
+/// xem README mục 3), không phải tự sinh trên máy.
 protocol PairingFileManaging {
+    /// Đã có pairing file lưu trong Keychain và minimuxer đã start thành công chưa.
+    func hasValidPairingFile() async -> Bool
+    /// Xoá pairing file cũ (bước đầu của quy trình sửa lỗi AFC).
     func resetPairingFile() async throws
-    func requestFreshPairingFile() async throws
+    /// Nhập nội dung 1 file `.mobiledevicepairing`/`.plist` do người dùng chọn
+    /// (qua UIDocumentPicker), lưu Keychain, rồi khởi động lại minimuxer với
+    /// nó — bước còn lại của quy trình sửa lỗi AFC.
+    func importPairingFile(from fileURL: URL) async throws
 }
 
 // MARK: - Placeholder implementations (dùng cho SwiftUI #Preview và Unit Test,
@@ -87,10 +98,11 @@ struct PlaceholderAppInstalling: AppInstalling {
 }
 
 struct PlaceholderPairingFileManaging: PairingFileManaging {
+    func hasValidPairingFile() async -> Bool { false }
     func resetPairingFile() async throws {
         throw NotWiredUpError.adapterNotImplemented("PairingFileManaging")
     }
-    func requestFreshPairingFile() async throws {
+    func importPairingFile(from fileURL: URL) async throws {
         throw NotWiredUpError.adapterNotImplemented("PairingFileManaging")
     }
 }

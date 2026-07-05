@@ -3,13 +3,18 @@ import Foundation
 /// Đại diện đơn giản cho một app đã sideload — do OpenSideloader tự định nghĩa,
 /// map từ dữ liệu trả về bởi MinimuxerBridge (installation_proxy). Giữ struct
 /// này nhẹ và value-type để UI dễ diff/animate khi danh sách cập nhật.
-struct SideloadedApp: Identifiable, Equatable {
+struct SideloadedApp: Identifiable, Equatable, Codable {
     let id: String                 // bundle identifier
     let name: String
     let version: String
     let iconSystemName: String     // placeholder; thực tế lấy icon thật từ ipa
     let installedDate: Date
     let expirationDate: Date       // ngày hết hạn provisioning profile (thường +7 ngày)
+    /// Đường dẫn tới bản .ipa OpenSideloader tự lưu cục bộ (Application
+    /// Support), KHÔNG phải đường dẫn tạm người dùng chọn lúc cài — cần giữ
+    /// lại để refresh sau này biết ký lại đúng file nào mà không phải hỏi lại
+    /// người dùng chọn file mỗi 7 ngày.
+    var localIpaPath: String
 
     var daysRemaining: Int {
         Calendar.current.dateComponents([.day], from: Date(), to: expirationDate).day ?? 0

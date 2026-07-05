@@ -15,6 +15,12 @@ struct OpenSideloaderApp: App {
         WindowGroup {
             RootTabView()
                 .environmentObject(environment)
+                // Đưa riêng thành EnvironmentObject để SwiftUI observe đúng
+                // @Published pendingRequest — binding xuyên qua 2 lớp
+                // (environment.twoFactorCoordinator.pendingRequest) KHÔNG tự
+                // kích hoạt refresh vì AppEnvironment không re-publish thay
+                // đổi của object con.
+                .environmentObject(environment.twoFactorCoordinator)
                 .task {
                     await environment.bootstrap()
                 }
@@ -42,21 +48,24 @@ final class AppEnvironment: ObservableObject {
     let appSigning: AppSigning
     let appInstalling: AppInstalling
     let pairingFileManaging: PairingFileManaging
+    /// Sheet hỏi mã 2FA bind vào biến này — xem RootTabView bên dưới.
+    let twoFactorCoordinator: TwoFactorPromptCoordinator
 
     let refreshCoordinator: RefreshCoordinator
 
     init(
         deviceConnection: DeviceConnecting = MinimuxerDeviceAdapter(),
-        appSigning: AppSigning = AppleAuthAdapter(),
         appInstalling: AppInstalling = MinimuxerDeviceAdapter(),
         pairingFileManaging: PairingFileManaging = MinimuxerDeviceAdapter()
     ) {
+        let coordinator = TwoFactorPromptCoordinator()
+        self.twoFactorCoordinator = coordinator
         self.deviceConnection = deviceConnection
-        self.appSigning = appSigning
+        self.appSigning = AppleAuthAdapter(twoFactorProvider: coordinator)
         self.appInstalling = appInstalling
         self.pairingFileManaging = pairingFileManaging
         self.refreshCoordinator = RefreshCoordinator(
-            appSigning: appSigning,
+            appSigning: self.appSigning,
             appInstalling: appInstalling
         )
     }
@@ -92,13 +101,28 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
-    /// Nút "Sửa lỗi kết nối" trong Settings gọi thẳng vào đây.
-    func repairPairingAndVPN() async {
+    /// Bước 1 của luồng sửa lỗi AFC: chỉ xoá pairing cũ, KHÔNG tự sinh được
+    /// file mới (minimuxer không có khả năng đó — xem PairingFileManaging).
+    /// Sau bước này, UI phải hỏi người dùng chọn 1 file `.mobiledevicepairing`
+    /// rồi gọi `importPairingFile(from:)`.
+    func resetPairingFile() async {
         isBusy = true
         defer { isBusy = false }
         do {
             try await pairingFileManaging.resetPairingFile()
-            try await pairingFileManaging.requestFreshPairingFile()
+            vpnStatus = await deviceConnection.currentVPNStatus()
+        } catch {
+            lastError = FriendlyError(from: error, context: .repairingConnection)
+        }
+    }
+
+    /// Bước 2: người dùng đã chọn xong file pairing (tạo bằng make_pair_file.py
+    /// trên Termux/PC, hoặc lấy từ pairing record của iTunes/Finder).
+    func importPairingFile(from url: URL) async {
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            try await pairingFileManaging.importPairingFile(from: url)
             vpnStatus = await deviceConnection.currentVPNStatus()
             lastError = nil
         } catch {
@@ -108,6 +132,8 @@ final class AppEnvironment: ObservableObject {
 }
 
 struct RootTabView: View {
+    @EnvironmentObject private var twoFactorCoordinator: TwoFactorPromptCoordinator
+
     var body: some View {
         TabView {
             MyAppsView()
@@ -118,6 +144,56 @@ struct RootTabView: View {
 
             SettingsView()
                 .tabItem { Label("Cài đặt hệ thống", systemImage: "gearshape") }
+        }
+        .sheet(item: $twoFactorCoordinator.pendingRequest) { request in
+            TwoFactorCodeSheet(request: request, coordinator: twoFactorCoordinator)
+        }
+    }
+}
+
+/// Sheet hỏi mã 2FA — hiện bất kể lúc đó người dùng đang thao tác ở tab nào,
+/// vì AppleGSAClient có thể cần mã này bất cứ lúc nào trong luồng đăng nhập.
+private struct TwoFactorCodeSheet: View {
+    let request: TwoFactorPromptCoordinator.PendingRequest
+    let coordinator: TwoFactorPromptCoordinator
+    @State private var code = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(methodDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    TextField("Mã 6 số", text: $code)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                }
+            }
+            .navigationTitle("Xác minh 2 bước")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Huỷ") {
+                        coordinator.cancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Xác nhận") {
+                        coordinator.submit(code: code)
+                        dismiss()
+                    }
+                    .disabled(code.count < 4)
+                }
+            }
+        }
+    }
+
+    private var methodDescription: String {
+        switch request.method {
+        case "sms": return "Nhập mã vừa gửi qua SMS."
+        default: return "Nhập mã hiện trên 1 thiết bị Apple khác đã đăng nhập cùng Apple ID."
         }
     }
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Personal VPN: cho phép app đọc/điều khiển trạng thái NEVPNManager của
+	     cấu hình StosVPN đã cài riêng (NEVPNStatusReader trong
+	     MinimuxerDeviceAdapter.swift). Đây là capability THƯỜNG, mọi tài khoản
+	     Apple Developer (kể cả free) đều thêm được trực tiếp trong Xcode →
+	     Signing & Capabilities → "+ Capability" → Personal VPN, KHÔNG cần xin
+	     Apple duyệt riêng.
+
+	     ⚠️ MỨC ĐỘ TIN CẬY: giá trị key/array bên dưới dựa trên hiểu biết chung
+	     về entitlement Personal VPN, CHƯA được xác nhận trực tiếp qua tài liệu
+	     Apple trong phiên làm việc này. Cách an toàn nhất: xoá khối này, để
+	     Xcode tự điền khi bạn bấm "+ Capability → Personal VPN" trong Signing &
+	     Capabilities — Xcode sẽ ghi đúng key/value mà không cần đoán. -->
+	<key>com.apple.developer.networking.vpn.api</key>
+	<array>
+		<string>allow-vpn</string>
+	</array>
+</dict>
+</plist>

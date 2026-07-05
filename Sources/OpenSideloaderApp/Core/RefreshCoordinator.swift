@@ -52,13 +52,11 @@ actor RefreshCoordinator {
     }
 
     private func refreshOne(_ app: SideloadedApp) async throws -> SideloadedApp {
+        // resign() trả về app với localIpaPath TRỎ TỚI bản .ipa đã ký lại
+        // (xem AppleAuthAdapter.resign) — cài lại đúng file đó, không phải
+        // file gốc lúc cài lần đầu.
         let resigned = try await appSigning.resign(app: app)
-        let installed = try await appInstalling.install(ipaURL: URL(fileURLWithPath: "/dev/null"))
-        // Lưu ý: trong triển khai thật, `resign(app:)` nên trả về đường dẫn ipa
-        // đã ký lại, và bạn truyền đúng URL đó vào `install(ipaURL:)` thay vì
-        // placeholder ở trên. Để nguyên kiểu này giúp file compile độc lập
-        // trước khi bạn nối MinimuxerBridge/AppleAuthAdapter thật.
-        _ = installed
-        return resigned
+        let signedURL = URL(fileURLWithPath: resigned.localIpaPath)
+        return try await appInstalling.install(ipaURL: signedURL)
     }
 }

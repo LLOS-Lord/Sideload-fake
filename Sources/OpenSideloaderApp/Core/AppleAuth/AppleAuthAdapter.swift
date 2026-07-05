@@ -20,7 +20,7 @@ final class AppleAuthAdapter: AppSigning {
     private let machineNamePrefix = "opensideloader-"
 
     init(
-        twoFactorProvider: TwoFactorCodeProviding = SwiftUITwoFactorPrompt(),
+        twoFactorProvider: TwoFactorCodeProviding,
         ipaSigning: IpaCodeSigning = UnimplementedIpaCodeSigning()
     ) {
         self.twoFactorProvider = twoFactorProvider
@@ -86,13 +86,18 @@ final class AppleAuthAdapter: AppSigning {
         }
 
         // 5) Ký lại — RANH GIỚI CÒN LẠI, xem IpaCodeSigning bên dưới.
+        //    Dùng đúng bản .ipa OpenSideloader tự lưu lúc cài lần đầu
+        //    (app.localIpaPath), không phải đường dẫn tạm lúc người dùng chọn
+        //    file, vì URL đó chỉ có hiệu lực trong phiên fileImporter đó.
+        guard !app.localIpaPath.isEmpty, FileManager.default.fileExists(atPath: app.localIpaPath) else {
+            throw AppSigningError.missingLocalIpa
+        }
         let signedURL = try await ipaSigning.sign(
-            appBundlePath: app.id, // TODO: đường dẫn .app thật đã giải nén, không phải bundle id
+            ipaFilePath: app.localIpaPath,
             certificatePEM: newCert.privateKeyPEM,
             certificateContentBase64: certificateContent,
             provisioningProfileBase64: profileData
         )
-        _ = signedURL
 
         return SideloadedApp(
             id: app.id,
@@ -100,7 +105,8 @@ final class AppleAuthAdapter: AppSigning {
             version: app.version,
             iconSystemName: app.iconSystemName,
             installedDate: app.installedDate,
-            expirationDate: Date().addingTimeInterval(7 * 24 * 60 * 60)
+            expirationDate: Date().addingTimeInterval(7 * 24 * 60 * 60),
+            localIpaPath: signedURL.path
         )
     }
 }
@@ -111,6 +117,7 @@ enum AppSigningError: LocalizedError {
     case missingAppIdId
     case certificateContentNotReady
     case missingProvisioningProfile
+    case missingLocalIpa
 
     var errorDescription: String? {
         switch self {
@@ -119,6 +126,7 @@ enum AppSigningError: LocalizedError {
         case .missingAppIdId: return "Không lấy được appIdId sau khi tạo/tra App ID."
         case .certificateContentNotReady: return "Apple chưa đồng bộ xong nội dung certificate — thử lại sau vài giây."
         case .missingProvisioningProfile: return "Không tải được provisioning profile."
+        case .missingLocalIpa: return "Không tìm thấy bản .ipa gốc đã lưu cho app này — cần cài lại từ đầu thay vì chỉ refresh."
         }
     }
 }
@@ -135,8 +143,12 @@ enum AppSigningError: LocalizedError {
 ///       tự viết lại chứ không copy AltSign
 /// Cả 2 đều là công việc riêng, chưa nằm trong phạm vi đã port ở đây.
 protocol IpaCodeSigning {
+    /// `ipaFilePath`: đường dẫn tới file .ipa GỐC (chưa ký) đã lưu cục bộ.
+    /// Việc giải nén ra `Payload/*.app`, ký, rồi đóng gói lại thành .ipa mới
+    /// là trách nhiệm của phần implement — tương đương chuỗi thao tác
+    /// `unzip → zsign → zip` trong bản Python tham chiếu.
     func sign(
-        appBundlePath: String,
+        ipaFilePath: String,
         certificatePEM: String,
         certificateContentBase64: String,
         provisioningProfileBase64: String
@@ -144,15 +156,7 @@ protocol IpaCodeSigning {
 }
 
 struct UnimplementedIpaCodeSigning: IpaCodeSigning {
-    func sign(appBundlePath: String, certificatePEM: String, certificateContentBase64: String, provisioningProfileBase64: String) async throws -> URL {
+    func sign(ipaFilePath: String, certificatePEM: String, certificateContentBase64: String, provisioningProfileBase64: String) async throws -> URL {
         throw AppSigningError.missingProvisioningProfile // placeholder — xem comment ở IpaCodeSigning
-    }
-}
-
-/// UI (SignInSheet) implement bằng cách hiện ô nhập mã, KHÔNG chặn thread
-/// chính trong lúc chờ người dùng gõ mã.
-struct SwiftUITwoFactorPrompt: TwoFactorCodeProviding {
-    func requestCode(method: String) async -> String? {
-        nil // TODO: nối với 1 sheet SwiftUI thật, xem SettingsView.swift
     }
 }
