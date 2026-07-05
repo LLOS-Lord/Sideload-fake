@@ -1,10 +1,10 @@
 import Foundation
 import NetworkExtension
 import Security
-import MinimuxerFFI
+import Minimuxer
 
 /// Triển khai thật của `DeviceConnecting`, `AppInstalling`, `PairingFileManaging`
-/// gọi vào `MinimuxerFFI` qua `MinimuxerBridge` (xem file đó để biết tên hàm
+/// gọi vào `Minimuxer` qua `MinimuxerBridge` (xem file đó để biết tên hàm
 /// FFI thật đã xác nhận) + Keychain/NetworkExtension chuẩn của Apple.
 final class MinimuxerDeviceAdapter: DeviceConnecting, AppInstalling, PairingFileManaging {
 

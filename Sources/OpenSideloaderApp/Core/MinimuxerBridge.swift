@@ -1,41 +1,49 @@
 import Foundation
-import MinimuxerFFI
+import Minimuxer
+
+/// `MinimuxerError` do swift-bridge sinh ra KHÔNG tự conform `Error` (kiểm tra
+/// trực tiếp trong Sources/Minimuxer/minimuxer.swift của gói SideStore/MinimuxerPackage
+/// — enum khai báo trần, không có `: Error`). SideStore/SideStore tự thêm
+/// conformance này trong MinimuxerWrapper.swift của họ; ở đây làm tương tự,
+/// nếu không mọi `throw val.payload.err.intoSwiftRepr()` bên trong module
+/// Minimuxer sẽ không biên dịch được khi module đó được dùng từ ngoài.
+extension MinimuxerError: Error {}
 
 /// Lớp bọc mỏng quanh các hàm FFI mà `swift-bridge` sinh ra từ crate Rust của
-/// minimuxer. KHÔNG phải TODO nữa — tên hàm/tham số bên dưới đối chiếu trực
-/// tiếp với khối `#[swift_bridge::bridge] mod ffi { extern "Rust" { ... } }`
-/// thật trong mã nguồn bạn gửi (`src/install.rs`, `src/muxer.rs`,
-/// `src/device.rs`, `src/provision.rs`, `src/lib.rs`):
+/// minimuxer, expose qua module `Minimuxer` (package SideStore/MinimuxerPackage).
 ///
-/// ```rust
-/// fn yeet_app_afc(bundle_id: String, ipa_bytes: &[u8]) -> Result<(), Errors>;
-/// fn install_ipa(bundle_id: String) -> Result<(), Errors>;
-/// fn remove_app(bundle_id: String) -> Result<(), Errors>;
-/// fn start(pairing_file: String, log_path: String) -> Result<(), Errors>;
-/// fn target_minimuxer_address();
-/// fn fetch_udid() -> Option<String>;
-/// fn test_device_connection() -> bool;
-/// fn install_provisioning_profile(profile: &[u8]) -> Result<(), Errors>;
-/// fn remove_provisioning_profile(id: String) -> Result<(), Errors>;
-/// fn describe_error(error: Errors) -> String;
-/// fn ready() -> bool;
-/// fn set_debug(debug: bool);
+/// ✅ ĐÃ XÁC NHẬN — không còn là suy đoán: đối chiếu trực tiếp với file
+/// `Sources/Minimuxer/minimuxer.swift` thật trong package đó (không phải đọc
+/// mã Rust rồi suy ra như trước), toàn bộ chữ ký hàm dưới đây khớp y nguyên,
+/// TRỪ 2 chỗ đã sửa ở trên (`describe_error`/`fetch_udid` trả `RustString`
+/// chứ không phải `String` — đã gọi `.toString()`):
+///
+/// ```swift
+/// public func target_minimuxer_address()
+/// public func start<T: IntoRustString>(_ pairing_file: T, _ log_path: T) throws -> ()
+/// public func ready() -> Bool
+/// public func set_debug(_ debug: Bool)
+/// public func describe_error(_ error: MinimuxerError) -> RustString
+/// public func fetch_udid() -> Optional<RustString>
+/// public func test_device_connection() -> Bool
+/// public func yeet_app_afc<T: IntoRustString>(_ bundle_id: T, _ ipa_bytes: UnsafeBufferPointer<UInt8>) throws -> ()
+/// public func install_ipa<T: IntoRustString>(_ bundle_id: T) throws -> ()
+/// public func remove_app<T: IntoRustString>(_ bundle_id: T) throws -> ()
+/// public func install_provisioning_profile(_ profile: UnsafeBufferPointer<UInt8>) throws -> ()
+/// public func remove_provisioning_profile<T: IntoRustString>(_ id: T) throws -> ()
 /// ```
 ///
-/// ⚠️ MỨC ĐỘ TIN CẬY — đọc trước khi build:
-/// Tên hàm và kiểu tham số ở trên là THẬT (đọc trực tiếp từ file bạn gửi, không
-/// đoán). Phần CHƯA chắc chắn 100% là cú pháp Swift chính xác mà swift-bridge
-/// sinh ra cho 2 trường hợp:
-///   1. `Result<(), Errors>` → có thể lộ ra Swift dưới dạng hàm `throws` trực
-///      tiếp (bản swift-bridge mới) HOẶC dưới dạng `RustResult<(), MinimuxerError>`
-///      cần gọi thêm `.toThrowingResult()`/tương tự để unwrap (bản cũ hơn).
-///      Code bên dưới viết theo hướng (1) — nếu Xcode báo lỗi kiểu, khả năng
-///      cao chỉ cần thêm `.get()`/`try result.toThrowingResult()` sau lời gọi,
-///      xem "Generated Interface" của MinimuxerFFI trong Xcode để biết chính xác.
-///   2. `&[u8]` tham số → viết theo pattern `UnsafeBufferPointer<UInt8>` mà
-///      file `generated/minimuxer-helpers.swift` bạn gửi định nghĩa qua
-///      `RustByteSlice`/`.toRustByteSlice()`. Nếu tên hàm helper khác đi ở
-///      bản bạn build, sửa lại đúng 1 chỗ trong `withByteSlice` bên dưới.
+/// Ghi chú:
+///   - Các hàm `throws` phía trên throw thẳng `MinimuxerError` (Swift enum),
+///     không cần `.toThrowingResult()`/`RustResult` gì thêm — nhưng bản thân
+///     `MinimuxerError` KHÔNG tự conform `Error` (xem extension ở trên).
+///   - `String` tự conform `IntoRustString` (khai báo trong SwiftBridgeCore.swift
+///     của package) nên truyền thẳng `String` vào các tham số generic `T` phía
+///     trên là hợp lệ, không cần convert tay.
+///   - `UnsafeBufferPointer<UInt8>` (không phải `RustByteSlice` tự tạo) — đúng
+///     với `withByteSlice` bên dưới, không cần sửa gì thêm.
+///   - Package còn có thêm `debug_app`, `attach_debugger`, `start_auto_mounter`,
+///     `dump_profiles` chưa được bọc ở đây — có thể thêm sau nếu cần.
 enum MinimuxerBridge {
 
     // MARK: - Lifecycle
@@ -57,13 +65,16 @@ enum MinimuxerBridge {
     }
 
     static func describe(_ error: MinimuxerError) -> String {
-        describe_error(error)
+        // describe_error trả về RustString (kiểm tra thật trong minimuxer.swift
+        // sinh ra), không tự bridge sang String — cần .toString() rõ ràng.
+        describe_error(error).toString()
     }
 
     // MARK: - Device
 
     static func fetchUDID() -> String? {
-        fetch_udid()
+        // Cùng lý do với describe(): fetch_udid() trả Optional<RustString>.
+        fetch_udid()?.toString()
     }
 
     static func testConnection() -> Bool {
