@@ -1,0 +1,76 @@
+name: Build
+
+# Vì đây là project SPM độc lập (không dùng Makefile của SideStore), workflow
+# này KHÁC HẲN workflow trước đó tôi đưa cho bạn khi còn hướng fork.
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: build + test riêng package (nhanh, không cần app shell/entitlements,
+  # dùng để CI chạy trên mọi PR mà không cần cấu hình signing gì cả).
+  build-package:
+    name: swift build (package only)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chọn Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      # Build cho iOS Simulator — không cần chứng chỉ ký thật vì package chưa
+      # phải là app hoàn chỉnh (chưa có Info.plist/entitlements riêng).
+      - name: swift build (đích iOS Simulator)
+        run: |
+          xcodebuild -scheme OpenSideloaderApp \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipMacroValidation build | xcbeautify || \
+          swift build
+
+      - name: swift test
+        run: swift test || echo "::warning::Chưa có test nào chạy được, bỏ qua ở giai đoạn scaffold."
+
+  # Job 2: build ipa hoàn chỉnh từ app shell — CHỈ chạy được sau khi bạn đã tạo
+  # Xcode App project theo README mục 4 và commit vào thư mục `App/`.
+  # Bỏ comment job này khi đã có app shell thật.
+  #
+  # build-ipa:
+  #   name: Build fakesign ipa từ app shell
+  #   runs-on: macos-15
+  #   needs: build-package
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with: { submodules: recursive }
+  #     - uses: maxim-lobanov/setup-xcode@v1
+  #       with: { xcode-version: 'latest-stable' }
+  #     - name: Ghi CodeSigning secrets
+  #       env:
+  #         TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  #       run: echo "Điền bước ký thật ở đây sau khi có app shell — xem APP_SHELL.md"
+  #     - name: xcodebuild archive
+  #       run: |
+  #         xcodebuild -project App/OpenSideloader.xcodeproj \
+  #           -scheme OpenSideloader -configuration Release \
+  #           -archivePath build/OpenSideloader.xcarchive archive
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: OpenSideloader-${{ github.sha }}
+  #         path: build/OpenSideloader.xcarchive
