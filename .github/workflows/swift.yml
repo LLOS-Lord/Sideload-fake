@@ -48,29 +48,93 @@ jobs:
       - name: swift test
         run: swift test || echo "::warning::Chưa có test nào chạy được, bỏ qua ở giai đoạn scaffold."
 
-  # Job 2: build ipa hoàn chỉnh từ app shell — CHỈ chạy được sau khi bạn đã tạo
-  # Xcode App project theo README mục 4 và commit vào thư mục `App/`.
-  # Bỏ comment job này khi đã có app shell thật.
+  # Job 2: build ipa hoàn chỉnh từ app shell (App/) — dùng XcodeGen để sinh
+  # .xcodeproj thay vì đọc file pbxproj viết tay, sau đó archive KHÔNG ký thật
+  # (CODE_SIGNING_ALLOWED=NO) rồi "fakesign" bằng ldid, giống cách
+  # AltServer/Sideloadly phân phối bản chưa ký — người dùng cuối tự ký lại
+  # bằng chính OpenSideloader (hoặc AltStore/SideStore khác) khi cài vào máy.
   #
-  # build-ipa:
-  #   name: Build fakesign ipa từ app shell
-  #   runs-on: macos-15
-  #   needs: build-package
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with: { submodules: recursive }
-  #     - uses: maxim-lobanov/setup-xcode@v1
-  #       with: { xcode-version: 'latest-stable' }
-  #     - name: Ghi CodeSigning secrets
-  #       env:
-  #         TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-  #       run: echo "Điền bước ký thật ở đây sau khi có app shell — xem APP_SHELL.md"
-  #     - name: xcodebuild archive
-  #       run: |
-  #         xcodebuild -project App/OpenSideloader.xcodeproj \
-  #           -scheme OpenSideloader -configuration Release \
-  #           -archivePath build/OpenSideloader.xcarchive archive
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: OpenSideloader-${{ github.sha }}
-  #         path: build/OpenSideloader.xcarchive
+  # ⚠️ MỨC ĐỘ TIN CẬY: đây là pipeline tôi viết dựa trên hiểu biết chung về
+  # xcodebuild/ldid, CHƯA chạy thử thật (không có macOS/Xcode trong môi trường
+  # của tôi). Khả năng cao cần chỉnh vài flag sau lần chạy CI đầu tiên — xem
+  # comment "khả năng cần sửa" ở từng bước rủi ro.
+  build-ipa:
+    name: Build + fakesign ipa từ app shell
+    runs-on: macos-15
+    needs: build-package
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chọn Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Cài XcodeGen + ldid
+        run: |
+          brew install xcodegen
+          # Khả năng cần sửa: ldid không phải lúc nào cũng có sẵn trong
+          # homebrew-core trên runner GitHub — nếu bước này lỗi, thử:
+          #   brew install --formula ldid
+          # hoặc cài từ tap khác (tìm "ldid brew tap" nếu 2 lệnh trên đều fail).
+          brew install ldid || brew install --formula ldid
+
+      - name: xcodegen generate (sinh .xcodeproj từ App/project.yml)
+        working-directory: App
+        run: xcodegen generate
+
+      - name: Resolve Swift Package dependencies
+        working-directory: App
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project OpenSideloader.xcodeproj \
+            -scheme OpenSideloader
+
+      # Archive KHÔNG ký (không có chứng chỉ Apple thật trong CI) — tạo ra
+      # .app hợp lệ về cấu trúc nhưng chưa có chữ ký thật, giống cách
+      # AltServer/SideStore build ipa để người dùng tự ký khi cài.
+      - name: xcodebuild archive (không ký)
+        working-directory: App
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project OpenSideloader.xcodeproj \
+            -scheme OpenSideloader \
+            -configuration Release \
+            -archivePath ../build/OpenSideloader.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | xcbeautify
+
+      - name: Fakesign bằng ldid + đóng gói ipa
+        run: |
+          set -e
+          APP_PATH="build/OpenSideloader.xcarchive/Products/Applications/OpenSideloader.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Không tìm thấy $APP_PATH sau khi archive — kiểm tra log bước trước."
+            find build -maxdepth 4
+            exit 1
+          fi
+
+          # ldid -S<entitlements> ký ad-hoc + nhúng entitlements vào executable,
+          # KHÔNG cần chứng chỉ Apple thật — đây là bước "fakesign" tương
+          # đương flow của AltServer/Sideloadly.
+          ldid -S"App/OpenSideloader.entitlements" "$APP_PATH/OpenSideloader"
+
+          mkdir -p ipa_root/Payload
+          cp -R "$APP_PATH" ipa_root/Payload/
+          cd ipa_root
+          zip -r ../build/OpenSideloader.ipa Payload > /dev/null
+          cd ..
+          echo "Đã tạo build/OpenSideloader.ipa"
+
+      - name: Upload ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSideloader-${{ github.sha }}
+          path: build/OpenSideloader.ipa
+          retention-days: 14
+          if-no-files-found: error
