@@ -80,6 +80,26 @@ for slice in ios-arm64 ios-arm64_x86_64-simulator; do
   fi
 done
 
+echo "==> Patching missing 'Error' conformance on MinimuxerError enum"
+# Bug thứ 2 (khác bug header ở trên): swift-bridge generate ra
+# `public enum MinimuxerError { ... }` KHÔNG conform protocol Error, nhưng
+# cũng chính bản generate đó lại `throw val.payload.err.intoSwiftRepr()`
+# (trả về MinimuxerError) ở khắp nơi trong SwiftBridgeCore.swift/minimuxer.swift.
+# Swift bắt buộc kiểu được throw phải conform Error -> "thrown expression type
+# 'MinimuxerError' does not conform to 'Error'". Vá tối thiểu: thêm ": Error"
+# vào khai báo enum.
+swift_file="$WORK_DIR/MinimuxerPackage/Sources/Minimuxer/minimuxer.swift"
+if grep -q "^public enum MinimuxerError {$" "$swift_file"; then
+  sed -i.bak 's/^public enum MinimuxerError {$/public enum MinimuxerError: Error {/' "$swift_file"
+  rm -f "$swift_file.bak"
+  echo "  minimuxer.swift: added 'Error' conformance to MinimuxerError"
+elif grep -q "^public enum MinimuxerError: Error {$" "$swift_file"; then
+  echo "  minimuxer.swift: MinimuxerError already conforms to Error, nothing to do"
+else
+  echo "  WARNING: could not find expected 'public enum MinimuxerError {' line in $swift_file" \
+       "- upstream may have changed, please check manually" >&2
+fi
+
 echo "==> Laying out local SPM package at: $OUT_DIR"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
