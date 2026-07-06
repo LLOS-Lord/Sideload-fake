@@ -28,6 +28,17 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
+      # Vendor + patch RustXcframework.xcframework của Minimuxer.
+      # Bản pin cũ (SideStore/MinimuxerPackage@7a73cc7) đóng gói sẵn minimuxer.h
+      # bị lỗi codegen (type __swift_bridge__$ResultVoidAndErrors định nghĩa lặp
+      # 5 lần trong 1 header) → "redefinition of enumerator ..." khi build. Bước
+      # này clone đúng commit đã pin, patch lại header (chỉ sửa text C, KHÔNG
+      # đụng vào .a Rust đã compile), rồi verify lại bằng compiler thật trước
+      # khi cho build tiếp — build sẽ dừng ngay ở đây (exit 1) nếu vì lý do gì
+      # đó bản patch không còn khớp, thay vì để lỗi khó hiểu ở bước build sau.
+      - name: Vendor + patch Minimuxer xcframework
+        run: bash Scripts/vendor-and-patch-minimuxer.sh Vendor/MinimuxerPackage
+
       - name: Cache SPM
         uses: actions/cache@v4
         with:
@@ -79,6 +90,13 @@ jobs:
           #   brew install --formula ldid
           # hoặc cài từ tap khác (tìm "ldid brew tap" nếu 2 lệnh trên đều fail).
           brew install ldid || brew install --formula ldid
+
+      # Vendor + patch RustXcframework.xcframework của Minimuxer (xem giải
+      # thích đầy đủ ở job build-package phía trên). Chạy ở ROOT repo (không
+      # phải trong App/) vì Package.swift + Vendor/ nằm ở gốc repo, còn các
+      # bước xcodegen/resolve/archive bên dưới mới cd vào App/.
+      - name: Vendor + patch Minimuxer xcframework
+        run: bash Scripts/vendor-and-patch-minimuxer.sh Vendor/MinimuxerPackage
 
       # THÊM: cache thư mục checkout SPM riêng cho app shell (job build-package
       # đã cache .build của `swift build`, nhưng job này dùng xcodebuild trên
