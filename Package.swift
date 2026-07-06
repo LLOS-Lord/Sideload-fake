@@ -37,6 +37,9 @@ let package = Package(
         // (libimobiledevice/libplist/libusbmuxd), MIT cho wrapper Swift —
         // khác AGPL của minimuxer, xem README mục 2.
         .package(url: "https://github.com/SideStore/iMobileDevice.swift.git", branch: "main"),
+        
+        // Để đọc/ghi file ZIP (IPA)
+        .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.0"),
     ],
     targets: [
         .target(
@@ -53,6 +56,7 @@ let package = Package(
 
                 // MỚI — xem ghi chú fix ở đầu file.
                 .product(name: "libimobiledevice", package: "iMobileDevice.swift"),
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
             ]
         ),
 

@@ -18,5 +18,14 @@
 	<array>
 		<string>allow-vpn</string>
 	</array>
+
+	<!-- Keychain Sharing: cho phép app lưu/đọc pairing file từ Keychain.
+	     Lỗi -34018 thường xảy ra khi entitlement này không được thiết lập đúng
+	     hoặc khi app được sideload mà không có đúng provisioning profile.
+	     Thay $(AppIdentifierPrefix) bằng Team ID của bạn (ví dụ: "ABC123XYZ.") -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.opensideloader.keychain</string>
+	</array>
 </dict>
 </plist>

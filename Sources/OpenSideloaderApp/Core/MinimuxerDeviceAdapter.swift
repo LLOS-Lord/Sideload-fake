@@ -134,10 +134,13 @@ final class MinimuxerDeviceAdapter: DeviceConnecting, AppInstalling, PairingFile
     /// cấu trúc `Payload/<Tên>.app/Info.plist`) — cần để gọi installation_proxy
     /// đúng bundle id thay vì suy từ tên file, vốn có thể khác bundle id thật.
     private static func readBundleIdentifier(fromIpaAt url: URL) throws -> String? {
-        // TODO: dùng 1 thư viện đọc zip (ví dụ ZIPFoundation, thêm vào Package.swift)
-        // để mở "Payload/*.app/Info.plist" và đọc CFBundleIdentifier thật, thay
-        // vì đoán từ tên file như hiện tại.
-        nil
+        do {
+            return try BundleIdentifierReader.readBundleIdentifier(from: url.path)
+        } catch {
+            // Nếu lỗi (ví dụ: ZIPFoundation chưa được thêm), trả về nil
+            // và sẽ dùng tên file làm fallback
+            return nil
+        }
     }
 }
 

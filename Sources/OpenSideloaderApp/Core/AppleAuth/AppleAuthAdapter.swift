@@ -21,7 +21,7 @@ final class AppleAuthAdapter: AppSigning {
 
     init(
         twoFactorProvider: TwoFactorCodeProviding,
-        ipaSigning: IpaCodeSigning = UnimplementedIpaCodeSigning()
+        ipaSigning: IpaCodeSigning = RealIpaCodeSigning()
     ) {
         self.twoFactorProvider = twoFactorProvider
         self.ipaSigning = ipaSigning
