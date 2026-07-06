@@ -126,7 +126,7 @@ actor AppleGSAClient {
         let extraDataKey = hmacSHA256(key: K, message: Data("extra data key:".utf8))
         let extraDataIV = hmacSHA256(key: K, message: Data("extra data iv:".utf8)).prefix(16)
 
-        var outLength = data.count + kCCBlockSizeAES128
+        let outLength = data.count + kCCBlockSizeAES128
         var outData = Data(count: outLength)
         var moved = 0
 

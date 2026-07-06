@@ -2,6 +2,7 @@ import Foundation
 import NetworkExtension
 import Security
 import Minimuxer
+import ZIPFoundation
 
 /// Triển khai thật của `DeviceConnecting`, `AppInstalling`, `PairingFileManaging`
 /// gọi vào `Minimuxer` qua `MinimuxerBridge` (xem file đó để biết tên hàm
@@ -135,7 +136,7 @@ final class MinimuxerDeviceAdapter: DeviceConnecting, AppInstalling, PairingFile
     /// đúng bundle id thay vì suy từ tên file, vốn có thể khác bundle id thật.
     private static func readBundleIdentifier(fromIpaAt url: URL) throws -> String? {
         do {
-            return try BundleIdentifierReader.readBundleIdentifier(from: url.path)
+            return try BundleIdentifierReader.readBundleIdentifier(fromIpaPath: url.path)
         } catch {
             // Nếu lỗi (ví dụ: ZIPFoundation chưa được thêm), trả về nil
             // và sẽ dùng tên file làm fallback

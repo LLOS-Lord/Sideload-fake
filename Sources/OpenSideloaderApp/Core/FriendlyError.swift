@@ -62,12 +62,12 @@ struct FriendlyError: Identifiable {
         case 1009, 3013:
             self.title = "Đã đăng ký quá nhiều App ID trong 7 ngày"
             self.message = "Tài khoản Apple ID miễn phí chỉ được đăng ký tối đa 10 App ID mỗi 7 ngày. Đợi đến khi hạn mức được làm mới, hoặc dùng Apple ID khác."
-            self.suggestedAction = .none
+            self.suggestedAction = FriendlyError.SuggestedAction.none
 
         case 1007:
             self.title = "File không đúng định dạng .ipa"
             self.message = "File bạn chọn có vẻ không phải một gói ứng dụng iOS hợp lệ. Thử tải lại file từ nguồn khác."
-            self.suggestedAction = .none
+            self.suggestedAction = FriendlyError.SuggestedAction.none
 
         default:
             switch context {
@@ -83,7 +83,7 @@ struct FriendlyError: Identifiable {
                 self.title = "Có lỗi xảy ra"
             }
             self.message = error.localizedDescription
-            self.suggestedAction = .none
+            self.suggestedAction = FriendlyError.SuggestedAction.none
         }
     }
 }
