@@ -31,17 +31,23 @@ let package = Package(
         // Apple — cả 2 đều của Apple/SSWG, Apache 2.0, KHÔNG phải AGPL.
         .package(url: "https://github.com/apple/swift-certificates.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
-        // minimuxer (Rust, AGPL) — dùng thẳng package SPM chính thức của SideStore
-        // thay vì tự khai báo binaryTarget trỏ URL/checksum thủ công. Repo này đã
-        // đóng gói sẵn RustXcframework.xcframework NGAY TRONG git (không tải qua
-        // mạng lúc resolve), nên `xcodebuild -resolvePackageDependencies` không
-        // còn phụ thuộc vào 1 URL Release do mình tự host + tính checksum tay
-        // (đây chính là nguyên nhân job "Resolve Swift Package dependencies" lỗi
-        // exit code 74 trước đây: URL cũ chứa "VERSION" theo nghĩa đen, 404).
-        // Ghim đúng 1 commit (thay vì `branch: "main"`) — KHÔNG phải để né lỗi gì
-        // trong repo đó, mà để bớt 1 biến số khi debug: nếu resolve vẫn lỗi, chắc
-        // chắn không phải do nhánh main đổi commit giữa các lần chạy CI.
-        .package(url: "https://github.com/SideStore/MinimuxerPackage.git", revision: "7a73cc752eb4e1efcbda260d0854f3f3a3c8436d"),
+        // minimuxer (Rust, AGPL) — ĐÃ ĐỔI từ package remote SideStore/MinimuxerPackage
+        // sang bản vendor local đã patch. Lý do: commit đã pin trước đó
+        // (7a73cc752eb4e1efcbda260d0854f3f3a3c8436d) đóng gói sẵn 1
+        // RustXcframework.xcframework có minimuxer.h SINH LỖI — type
+        // `__swift_bridge__$ResultVoidAndErrors` (enum Tag + union Fields +
+        // struct typedef) bị swift-bridge generate LẶP LẠI 5 LẦN trong cùng 1
+        // header (mỗi lần ứng với 1 file Rust khác nhau trả về Result<(), Errors>),
+        // gây lỗi "redefinition of enumerator ...ResultVoidAndErrors..." khi
+        // build (đã tự verify lại bằng `gcc -fsyntax-only` ngoài Xcode — lỗi
+        // luôn xảy ra ở BẤT KỲ Xcode/toolchain nào, không phải do Explicit
+        // Modules hay Xcode 26). File .a (Rust đã compile) không đổi gì —
+        // chỉ có text của header generate sai, nên chỉ cần patch header, không
+        // cần build lại Rust. Xem Scripts/vendor-and-patch-minimuxer.sh (chạy
+        // trong CI ở bước "Vendor + patch Minimuxer xcframework") và
+        // Vendor/MinimuxerPackage/Package.swift để biết chi tiết + cách tái
+        // tạo bản patch này từ đầu.
+        .package(path: "Vendor/MinimuxerPackage"),
     ],
     targets: [
         .target(
